@@ -13,39 +13,42 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.stream.Collectors;
 
 public class Main {
     public static void main(String[] args) throws Exception {
-        Server server = new Server(8080);
+        Server server = new Server(8888);
         ServletHandler handler = new ServletHandler();
         server.setHandler(handler);
-        try (JedisPool pool = new JedisPool(new JedisPoolConfig(), "localhost")) {
+
+        JedisPoolConfig poolConfig = new JedisPoolConfig();
+        poolConfig.setMaxIdle(3);
+
+        try (JedisPool pool = new JedisPool(poolConfig, "localhost")) {
             handler.addServletWithMapping(new ServletHolder(new RedisServlet(pool)), "/");
             server.start();
             server.join();
         }
     }
 
-    public static class RedisServlet extends HttpServlet
-    {
+    public static class RedisServlet extends HttpServlet {
         private JedisPool pool;
+
         public RedisServlet(JedisPool p) {
             this.pool = p;
         }
+
         @Override
         protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             try (Jedis jedis = this.pool.getResource()) {
-                String json = req.getReader().lines().collect(Collectors.joining(System.lineSeparator()));
                 Genson genson = new Genson();
-                Data d = genson.deserialize(json, Data.class);
-                d.key = jedis.getSet("k1", d.key);
+                Data d = genson.deserialize(req.getReader(), Data.class);
+                d.value = jedis.getSet("k", d.value);
                 resp.getWriter().println(genson.serialize(d));
             }
         }
     }
 
     public static class Data {
-        public String key;
+        public String value;
     }
 }
